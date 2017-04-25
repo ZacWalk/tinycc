@@ -364,6 +364,10 @@ extern long double strtold (const char *__nptr, char **__endptr);
 #include "stab.h"
 #include "dwarf.h"
 
+#ifdef TCC_TARGET_PE
+#include "pe32.h"
+#endif
+
 /* -------------------------------------------- */
 
 #ifndef PUB_FUNC /* functions used by tcc.c but not in libtcc.h */
