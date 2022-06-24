@@ -458,59 +458,36 @@ static void arm64_strv(int sz_, int dst, int bas, uint64_t off)
 
 static void arm64_sym(int r, Sym *sym, unsigned long addend)
 {
-    greloca(cur_text_section, sym, ind, R_AARCH64_ADR_GOT_PAGE, 0);
-    o(0x90000000 | r);            // adrp xr, #sym
-    greloca(cur_text_section, sym, ind, R_AARCH64_LD64_GOT_LO12_NC, 0);
-    o(0xf9400000 | r | (r << 5)); // ld xr,[xr, #sym]
-    if (addend) {
-        // add xr, xr, #addend
-	if (addend & 0xffful)
-           o(0x91000000 | r | r << 5 | (addend & 0xfff) << 10);
-        if (addend > 0xffful) {
-            // add xr, xr, #addend, lsl #12
-	    if (addend & 0xfff000ul)
-                o(0x91400000 | r | r << 5 | ((addend >> 12) & 0xfff) << 10);
-            if (addend > 0xfffffful) {
-		/* very unlikely */
-		int t = r ? 0 : 1;
-		o(0xf81f0fe0 | t);            /* str xt, [sp, #-16]! */
-		arm64_movimm(t, addend & ~0xfffffful); // use xt for addent
-		o(0x91000000 | r | (t << 5)); /* add xr, xt, #0 */
-		o(0xf84107e0 | t);            /* ldr xt, [sp], #16 */
-	    }
-        }
+    int avoid_adrp;
 
-// TODO
-//     int avoid_adrp;
+#ifdef TCC_TARGET_PE
+    avoid_adrp = 0;
+#else
+    // Currently TCC's linker does not generate COPY relocations for
+    // STT_OBJECTs when tcc is invoked with "-run". This typically
+    // results in "R_AARCH64_ADR_PREL_PG_HI21 relocation failed" when
+    // a program refers to stdin. A workaround is to avoid that
+    // relocation and use only relocations with unlimited range.
+    avoid_adrp = 1;
+#endif
 
-// #ifdef TCC_TARGET_PE
-//     avoid_adrp = 0;
-// #else
-//     // Currently TCC's linker does not generate COPY relocations for
-//     // STT_OBJECTs when tcc is invoked with "-run". This typically
-//     // results in "R_AARCH64_ADR_PREL_PG_HI21 relocation failed" when
-//     // a program refers to stdin. A workaround is to avoid that
-//     // relocation and use only relocations with unlimited range.
-//     avoid_adrp = 1;
-// #endif
-
-//     if (avoid_adrp || sym->a.weak) {
-//         // (GCC uses a R_AARCH64_ABS64 in this case.)
-//         greloca(cur_text_section, sym, ind, R_AARCH64_MOVW_UABS_G0_NC, addend);
-//         o(0xd2800000 | r); // mov x(rt),#0,lsl #0
-//         greloca(cur_text_section, sym, ind, R_AARCH64_MOVW_UABS_G1_NC, addend);
-//         o(0xf2a00000 | r); // movk x(rt),#0,lsl #16
-//         greloca(cur_text_section, sym, ind, R_AARCH64_MOVW_UABS_G2_NC, addend);
-//         o(0xf2c00000 | r); // movk x(rt),#0,lsl #32
-//         greloca(cur_text_section, sym, ind, R_AARCH64_MOVW_UABS_G3, addend);
-//         o(0xf2e00000 | r); // movk x(rt),#0,lsl #48
-//     }
-//     else {
-//         greloca(cur_text_section, sym, ind, R_AARCH64_ADR_PREL_PG_HI21, addend);
-//         o(0x90000000 | r);
-//         greloca(cur_text_section, sym, ind, R_AARCH64_ADD_ABS_LO12_NC, addend);
-//         o(0x91000000 | r | r << 5);
-//     }
+    if (avoid_adrp || sym->a.weak) {
+        // (GCC uses a R_AARCH64_ABS64 in this case.)
+        greloca(cur_text_section, sym, ind, R_AARCH64_MOVW_UABS_G0_NC, addend);
+        o(0xd2800000 | r); // mov x(rt),#0,lsl #0
+        greloca(cur_text_section, sym, ind, R_AARCH64_MOVW_UABS_G1_NC, addend);
+        o(0xf2a00000 | r); // movk x(rt),#0,lsl #16
+        greloca(cur_text_section, sym, ind, R_AARCH64_MOVW_UABS_G2_NC, addend);
+        o(0xf2c00000 | r); // movk x(rt),#0,lsl #32
+        greloca(cur_text_section, sym, ind, R_AARCH64_MOVW_UABS_G3, addend);
+        o(0xf2e00000 | r); // movk x(rt),#0,lsl #48
+    }
+    else {
+        greloca(cur_text_section, sym, ind, R_AARCH64_ADR_PREL_PG_HI21, addend);
+        o(0x90000000 | r);
+        greloca(cur_text_section, sym, ind, R_AARCH64_ADD_ABS_LO12_NC, addend);
+        o(0x91000000 | r | r << 5);
+    }
 }
 
 static void arm64_load_cmp(int r, SValue *sv);

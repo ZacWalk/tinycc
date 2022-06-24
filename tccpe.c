@@ -29,7 +29,18 @@
 #include <sys/stat.h> /* chmod() */
 #endif
 
-#ifdef TCC_TARGET_X86_64
+#define CHARACTERISTICS (IMAGE_FILE_EXECUTABLE_IMAGE    |\
+                         IMAGE_FILE_DEBUG_STRIPPED      |\
+                         IMAGE_FILE_LOCAL_SYMS_STRIPPED |\
+                         IMAGE_FILE_LINE_NUMS_STRIPPED)
+
+#define CHARACTERISTICS_32 (CHARACTERISTICS             |\
+                            IMAGE_FILE_32BIT_MACHINE)
+
+#define CHARACTERISTICS_64 (CHARACTERISTICS             |\
+                            IMAGE_FILE_LARGE_ADDRESS_AWARE)
+
+#if defined TCC_TARGET_X86_64
 # define ADDR3264 ULONGLONG
 # define PE_IMAGE_REL IMAGE_REL_BASED_DIR64
 # define REL_TYPE_DIRECT R_X86_64_64
@@ -137,7 +148,7 @@ typedef struct _IMAGE_OPTIONAL_HEADER {
     DWORD   SizeOfUninitializedData;
     DWORD   AddressOfEntryPoint;
     DWORD   BaseOfCode;
-#ifndef TCC_TARGET_X86_64
+#if PTR_SIZE == 4
     DWORD   BaseOfData;
 #endif
     /* NT additional fields. */
@@ -272,7 +283,7 @@ struct pe_header
     BYTE dosstub[0x40];
     DWORD nt_sig;
     IMAGE_FILE_HEADER filehdr;
-#ifdef TCC_TARGET_X86_64
+#if PTR_SIZE == 8
     IMAGE_OPTIONAL_HEADER64 opthdr;
 #else
 #ifdef _WIN64
@@ -556,23 +567,27 @@ static int pe_write(struct pe_info *pe)
     0x00000000, /*DWORD   TimeDateStamp; */
     0x00000000, /*DWORD   PointerToSymbolTable; */
     0x00000000, /*DWORD   NumberOfSymbols; */
-#if defined(TCC_TARGET_X86_64)
+#if PTR_SIZE == 8
     0x00F0, /*WORD    SizeOfOptionalHeader; */
-    0x022F  /*WORD    Characteristics; */
+    CHARACTERISTICS_64  /*WORD    Characteristics; */
+#define CHARACTERISTICS_DLL 0x222E
+#elif defined(TCC_TARGET_ARM64)
+    0x00F0, /*WORD    SizeOfOptionalHeader; */
+    CHARACTERISTICS_64  /*WORD    Characteristics; */
 #define CHARACTERISTICS_DLL 0x222E
 #elif defined(TCC_TARGET_I386)
     0x00E0, /*WORD    SizeOfOptionalHeader; */
-    0x030F  /*WORD    Characteristics; */
+    CHARACTERISTICS_32  /*WORD    Characteristics; */
 #define CHARACTERISTICS_DLL 0x230E
 #elif defined(TCC_TARGET_ARM)
     0x00E0, /*WORD    SizeOfOptionalHeader; */
-    0x010F, /*WORD    Characteristics; */
+    CHARACTERISTICS_32, /*WORD    Characteristics; */
 #define CHARACTERISTICS_DLL 0x230F
 #endif
 },{
     /* IMAGE_OPTIONAL_HEADER opthdr */
     /* Standard fields. */
-#ifdef TCC_TARGET_X86_64
+#if PTR_SIZE == 8
     0x020B, /*WORD    Magic; */
 #else
     0x010B, /*WORD    Magic; */
@@ -584,7 +599,7 @@ static int pe_write(struct pe_info *pe)
     0x00000000, /*DWORD   SizeOfUninitializedData; */
     0x00000000, /*DWORD   AddressOfEntryPoint; */
     0x00000000, /*DWORD   BaseOfCode; */
-#ifndef TCC_TARGET_X86_64
+#if PTR_SIZE == 4
     0x00000000, /*DWORD   BaseOfData; */
 #endif
     /* NT additional fields. */
@@ -665,9 +680,8 @@ static int pe_write(struct pe_info *pe)
                 break;
 
             case sec_data:
-#ifndef TCC_TARGET_X86_64
-                if (!pe_header.opthdr.BaseOfData)
-                    pe_header.opthdr.BaseOfData = addr;
+#if PTR_SIZE == 4
+                pe_header.opthdr.BaseOfData = addr;
 #endif
                 break;
 
@@ -725,8 +739,10 @@ static int pe_write(struct pe_info *pe)
     pe_header.opthdr.Subsystem = pe->subsystem;
     if (pe->s1->pe_stack_size)
         pe_header.opthdr.SizeOfStackReserve = pe->s1->pe_stack_size;
+
     if (PE_DLL == pe->type)
         pe_header.filehdr.Characteristics = CHARACTERISTICS_DLL;
+
     pe_header.filehdr.Characteristics |= pe->s1->pe_characteristics;
 
     pe_fwrite(&pe_header, sizeof pe_header, &pf);
@@ -1588,7 +1604,8 @@ static int get_dllexports(int fd, char **pp)
     if (!read_mem(fd, pef_hdroffset, &ih, sizeof ih))
         goto the_end;
     opt_hdroffset = pef_hdroffset + sizeof ih;
-    if (ih.Machine == 0x014C) {
+    if (ih.Machine == 0x014C || /* 32-bit x86. */
+	ih.Machine == 0x01c0) { /* 32-bit arm. */
         IMAGE_OPTIONAL_HEADER32 oh;
         sec_hdroffset = opt_hdroffset + sizeof oh;
         if (!read_mem(fd, opt_hdroffset, &oh, sizeof oh))
@@ -1596,7 +1613,8 @@ static int get_dllexports(int fd, char **pp)
         if (IMAGE_DIRECTORY_ENTRY_EXPORT >= oh.NumberOfRvaAndSizes)
             goto the_end_0;
         addr = oh.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
-    } else if (ih.Machine == 0x8664) {
+    } else if (ih.Machine == 0x8664 || /* 64-bit x86 */
+	       ih.Machine == 0xaa64) { /* 64-bit arm */
         IMAGE_OPTIONAL_HEADER64 oh;
         sec_hdroffset = opt_hdroffset + sizeof oh;
         if (!read_mem(fd, opt_hdroffset, &oh, sizeof oh))
@@ -1873,7 +1891,7 @@ ST_FUNC void pe_add_unwind_data(unsigned start, unsigned end, unsigned stack)
 }
 #endif
 /* ------------------------------------------------------------- */
-#ifdef TCC_TARGET_X86_64
+#if defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
 #define PE_STDSYM(n,s) n
 #else
 #define PE_STDSYM(n,s) "_" n s
@@ -1981,20 +1999,19 @@ static void pe_set_options(TCCState * s1, struct pe_info *pe)
     }
 
 #if defined(TCC_TARGET_ARM)
-    /* we use "console" subsystem by default */
-    pe->subsystem = 9;
+    pe->subsystem = IMAGE_SUBSYSTEM_WINDOWS_CE_GUI;
 #else
     if (PE_DLL == pe->type || PE_GUI == pe->type)
-        pe->subsystem = 2;
+        pe->subsystem = IMAGE_SUBSYSTEM_WINDOWS_GUI;
     else
-        pe->subsystem = 3;
+        pe->subsystem = IMAGE_SUBSYSTEM_WINDOWS_CUI;
 #endif
     /* Allow override via -Wl,-subsystem=... option */
-    if (s1->pe_subsystem != 0)
+    if (s1->pe_subsystem != IMAGE_SUBSYSTEM_UNKNOWN)
         pe->subsystem = s1->pe_subsystem;
 
     /* set default file/section alignment */
-    if (pe->subsystem == 1) {
+    if (pe->subsystem == IMAGE_SUBSYSTEM_NATIVE) {
         pe->section_align = 0x20;
         pe->file_align = 0x20;
     } else {

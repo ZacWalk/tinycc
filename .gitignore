@@ -62,3 +62,8 @@ tests/vla_test
 tests/hello
 tests/tests2/fred.txt
 libtcc.dylib
+
+.vscode/settings.json
+win32/include/stdatomic.h
+win32/include/tccdefs.h
+win32/include/tgmath.h

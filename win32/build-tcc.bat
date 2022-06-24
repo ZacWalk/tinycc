@@ -93,23 +93,32 @@ if not %T%_==_ goto :p2
 set T=32
 if %PROCESSOR_ARCHITECTURE%_==AMD64_ set T=64
 if %PROCESSOR_ARCHITEW6432%_==AMD64_ set T=64
+if %PROCESSOR_ARCHITEW6432%_==ARM64 set T=64
 :p2
 if "%CC:~-3%"=="gcc" set CC=%CC% -O2 -s -static %DEF_GITHASH%
 set D32=-DTCC_TARGET_PE -DTCC_TARGET_I386
 set D64=-DTCC_TARGET_PE -DTCC_TARGET_X86_64
+set DA64=-DTCC_TARGET_PE -DTCC_TARGET_ARM64
 set P32=i386-win32
 set P64=x86_64-win32
+set PA64=arm64-win32
 if %T%==64 goto :t64
 set D=%D32%
 set DX=%D64%
 set PX=%P64%
+set DAX=%DA64%
+set PAX=%PA64%
 set TX=64
+set TAX=arm64
 goto :p3
 :t64
 set D=%D64%
 set DX=%D32%
 set PX=%P32%
+set DAX=%DA64%
+set PAX=%PA64%
 set TX=32
+set TAX=arm64
 goto :p3
 
 :p3
@@ -117,7 +126,9 @@ goto :p3
 
 :config.h
 echo>..\config.h #define TCC_VERSION "%VERSION%"
-echo>> ..\config.h #ifdef TCC_TARGET_X86_64
+echo>> ..\config.h #if defined(TCC_TARGET_ARM64)
+echo>> ..\config.h #define TCC_LIBTCC1 "libtcc1-arm64.a"
+echo>> ..\config.h #elif defined(TCC_TARGET_X86_64)
 echo>> ..\config.h #define TCC_LIBTCC1 "libtcc1-64.a"
 echo>> ..\config.h #else
 echo>> ..\config.h #define TCC_LIBTCC1 "libtcc1-32.a"
@@ -136,6 +147,7 @@ for %%f in (*tcc.exe *tcc.dll) do @del %%f
 @if errorlevel 1 goto :the_end
 %CC% -o tcc.exe ..\tcc.c libtcc.dll %D% -DONE_SOURCE"=0"
 %CC% -o %PX%-tcc.exe ..\tcc.c %DX%
+%CC% -o %PAX%-tcc.exe ..\tcc.c %DAX%
 :compiler_done
 @if (%EXES_ONLY%)==(yes) goto :files_done
 
@@ -154,6 +166,8 @@ if exist libtcc.dll .\tcc -impdef libtcc.dll -o libtcc\libtcc.def
 call :makelib %T%
 @if errorlevel 1 goto :the_end
 @if exist %PX%-tcc.exe call :makelib %TX%
+@if errorlevel 1 goto :the_end
+@if exist %PAX%-tcc.exe call :makelib %TAX%
 @if errorlevel 1 goto :the_end
 .\tcc -m%T% -c ../lib/bcheck.c -o lib/bcheck.o -g
 .\tcc -m%T% -c ../lib/bt-exe.c -o lib/bt-exe.o

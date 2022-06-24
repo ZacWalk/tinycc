@@ -1295,6 +1295,7 @@ ST_FUNC char *tcc_load_text(int fd);
 #define OPT_IMPDEF 6
 #define OPT_M32 32
 #define OPT_M64 64
+#define OPT_MARM64 65
 
 /* ------------ tccpp.c ------------ */
 

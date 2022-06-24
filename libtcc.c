@@ -779,23 +779,23 @@ LIBTCCAPI TCCState *tcc_new(void)
 {
     TCCState *s;
 
-    tcc_cleanup();
-
     s = tcc_mallocz(sizeof(TCCState));
     if (!s)
         return NULL;
-    tcc_state = s;
+#ifdef MEM_DEBUG
     ++nb_states;
-
-    s->alacarte_link = 1;
-    s->nocommon = 1;
-    s->warn_implicit_function_declaration = 1;
-    s->ms_extensions = 1;
-
-#ifdef TCC_TARGET_UEFI
-    s->nostdlib = 1;
-    s->nostdinc = 1;
 #endif
+
+#undef gnu_ext
+
+    s->gnu_ext = 1;
+    s->tcc_ext = 1;
+    s->nocommon = 1;
+    s->dollars_in_identifiers = 1; /*on by default like in gcc/clang*/
+    s->cversion = 199901; /* default unless -std=c11 is supplied */
+    s->warn_implicit_function_declaration = 1;
+    s->warn_discarded_qualifiers = 1;
+    s->ms_extensions = 1;
 
 #ifdef CHAR_IS_UNSIGNED
     s->char_is_unsigned = 1;
@@ -804,147 +804,20 @@ LIBTCCAPI TCCState *tcc_new(void)
     s->seg_size = 32;
 #endif
     /* enable this if you want symbols with leading underscore on windows: */
-#if 0 /* def TCC_TARGET_PE */
+#if defined TCC_TARGET_MACHO /* || defined TCC_TARGET_PE */
     s->leading_underscore = 1;
 #endif
-#ifdef _WIN32
-    tcc_set_lib_path_w32(s);
-#else
-    tcc_set_lib_path(s, CONFIG_TCCDIR);
+#ifdef TCC_TARGET_ARM
+    s->float_abi = ARM_FLOAT_ABI;
 #endif
+
+    s->ppfp = stdout;
+    /* might be used in error() before preprocess_start() */
+    s->include_stack_ptr = s->include_stack;
+
     tccelf_new(s);
-    tccpp_new(s);
 
-    /* we add dummy defines for some special macros to speed up tests
-       and to have working defined() */
-    define_push(TOK___LINE__, MACRO_OBJ, NULL, NULL);
-    define_push(TOK___FILE__, MACRO_OBJ, NULL, NULL);
-    define_push(TOK___DATE__, MACRO_OBJ, NULL, NULL);
-    define_push(TOK___TIME__, MACRO_OBJ, NULL, NULL);
-    define_push(TOK___COUNTER__, MACRO_OBJ, NULL, NULL);
-    {
-        /* define __TINYC__ 92X  */
-        char buffer[32]; int a,b,c;
-        sscanf(TCC_VERSION, "%d.%d.%d", &a, &b, &c);
-        sprintf(buffer, "%d", a*10000 + b*100 + c);
-        tcc_define_symbol(s, "__TINYC__", buffer);
-    }
-
-    /* standard defines */
-    tcc_define_symbol(s, "__STDC__", NULL);
-    tcc_define_symbol(s, "__STDC_VERSION__", "199901L");
-    tcc_define_symbol(s, "__STDC_HOSTED__", NULL);
-
-    /* target defines */
-#if defined(TCC_TARGET_I386)
-    tcc_define_symbol(s, "__i386__", NULL);
-    tcc_define_symbol(s, "__i386", NULL);
-    tcc_define_symbol(s, "i386", NULL);
-#elif defined(TCC_TARGET_X86_64)
-    tcc_define_symbol(s, "__x86_64__", NULL);
-#elif defined(TCC_TARGET_ARM)
-    tcc_define_symbol(s, "__ARM_ARCH_4__", NULL);
-    tcc_define_symbol(s, "__arm_elf__", NULL);
-    tcc_define_symbol(s, "__arm_elf", NULL);
-    tcc_define_symbol(s, "arm_elf", NULL);
-    tcc_define_symbol(s, "__arm__", NULL);
-    tcc_define_symbol(s, "__arm", NULL);
-    tcc_define_symbol(s, "arm", NULL);
-    tcc_define_symbol(s, "__APCS_32__", NULL);
-    tcc_define_symbol(s, "__ARMEL__", NULL);
-#if defined(TCC_ARM_EABI)
-    tcc_define_symbol(s, "__ARM_EABI__", NULL);
-#endif
-#if defined(TCC_ARM_HARDFLOAT)
-    s->float_abi = ARM_HARD_FLOAT;
-    tcc_define_symbol(s, "__ARM_PCS_VFP", NULL);
-#else
-    s->float_abi = ARM_SOFTFP_FLOAT;
-#endif
-#elif defined(TCC_TARGET_ARM64)
-    tcc_define_symbol(s, "__aarch64__", NULL);
-#endif
-
-#ifdef TCC_TARGET_PE
-    tcc_define_symbol(s, "_WIN32", NULL);
-# if PTR_SIZE == 8
-    tcc_define_symbol(s, "_WIN64", NULL);
-# endif
-#else
-    tcc_define_symbol(s, "__unix__", NULL);
-    tcc_define_symbol(s, "__unix", NULL);
-    tcc_define_symbol(s, "unix", NULL);
-# if defined(__linux__)
-    tcc_define_symbol(s, "__linux__", NULL);
-    tcc_define_symbol(s, "__linux", NULL);
-# endif
-# if defined(__FreeBSD__)
-    tcc_define_symbol(s, "__FreeBSD__", "__FreeBSD__");
-    /* No 'Thread Storage Local' on FreeBSD with tcc */
-    tcc_define_symbol(s, "__NO_TLS", NULL);
-# endif
-# if defined(__FreeBSD_kernel__)
-    tcc_define_symbol(s, "__FreeBSD_kernel__", NULL);
-# endif
-#endif
-# if defined(__NetBSD__)
-    tcc_define_symbol(s, "__NetBSD__", "__NetBSD__");
-# endif
-# if defined(__OpenBSD__)
-    tcc_define_symbol(s, "__OpenBSD__", "__OpenBSD__");
-# endif
-
-    /* TinyCC & gcc defines */
-#if defined(TCC_TARGET_PE) && PTR_SIZE == 8
-    /* 64bit Windows. */
-    tcc_define_symbol(s, "__SIZE_TYPE__", "unsigned long long");
-    tcc_define_symbol(s, "__PTRDIFF_TYPE__", "long long");
-    tcc_define_symbol(s, "__LLP64__", NULL);
-#elif PTR_SIZE == 8
-    /* Other 64bit systems. */
-    tcc_define_symbol(s, "__SIZE_TYPE__", "unsigned long");
-    tcc_define_symbol(s, "__PTRDIFF_TYPE__", "long");
-    tcc_define_symbol(s, "__LP64__", NULL);
-#else
-    /* Other 32bit systems. */
-    tcc_define_symbol(s, "__SIZE_TYPE__", "unsigned int");
-    tcc_define_symbol(s, "__PTRDIFF_TYPE__", "int");
-    tcc_define_symbol(s, "__ILP32__", NULL);
-#endif
-
-#if defined(TCC_MUSL)
-    tcc_define_symbol(s, "__builtin_va_list", "void *");
-#endif /* TCC_MUSL */
-
-#ifdef TCC_TARGET_PE
-    tcc_define_symbol(s, "__WCHAR_TYPE__", "unsigned short");
-    tcc_define_symbol(s, "__WINT_TYPE__", "unsigned short");
-#else
-    tcc_define_symbol(s, "__WCHAR_TYPE__", "int");
-    /* wint_t is unsigned int by default, but (signed) int on BSDs
-       and unsigned short on windows.  Other OSes might have still
-       other conventions, sigh.  */
-# if defined(__FreeBSD__) || defined (__FreeBSD_kernel__) \
-  || defined(__NetBSD__) || defined(__OpenBSD__)
-    tcc_define_symbol(s, "__WINT_TYPE__", "int");
-#  ifdef __FreeBSD__
-    /* define __GNUC__ to have some useful stuff from sys/cdefs.h
-       that are unconditionally used in FreeBSDs other system headers :/ */
-    tcc_define_symbol(s, "__GNUC__", "2");
-    tcc_define_symbol(s, "__GNUC_MINOR__", "7");
-    tcc_define_symbol(s, "__builtin_alloca", "alloca");
-#  endif
-# else
-    tcc_define_symbol(s, "__WINT_TYPE__", "unsigned int");
-    /* glibc defines */
-    tcc_define_symbol(s, "__REDIRECT(name, proto, alias)",
-        "name proto __asm__ (#alias)");
-    tcc_define_symbol(s, "__REDIRECT_NTH(name, proto, alias)",
-        "name proto __asm__ (#alias) __THROW");
-# endif
-    /* Some GCC builtins that are simple to express as macros.  */
-    tcc_define_symbol(s, "__builtin_extract_return_addr(x)", "x");
-#endif /* ndef TCC_TARGET_PE */
+    tcc_set_lib_path(s, CONFIG_TCCDIR);
     return s;
 }
 
@@ -2031,13 +1904,19 @@ reparse:
             break;
 #endif
         case TCC_OPTION_m:
-            if (set_flag(s, options_m, optarg) < 0) {
-                if (x = atoi(optarg), x != 32 && x != 64)
-                    goto unsupported_option;
-                if (PTR_SIZE != x/8)
+            if (!strcmp(optarg, "32")) {
+                x = OPT_M32;
+            } else if (!strcmp(optarg, "64")) {
+                x = OPT_M64;
+            } else if (!strcmp(optarg, "arm64")) {
+                x = OPT_MARM64;
+            } else {
+                tcc_error("unsupported target '%s'", optarg);
+                 goto unsupported_option;                
+            }
+            if ((PTR_SIZE*8) != x)
                     return x;
                 ++noaction;
-            }
             break;
         case TCC_OPTION_W:
             s->warn_none = 0;

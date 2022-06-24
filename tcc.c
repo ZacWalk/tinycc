@@ -74,8 +74,8 @@ static const char help[] =
     "  -M[M]D       generate make dependency file [ignore system files]\n"
     "  -M[M]        as above but no other output\n"
     "  -MF file     specify dependency file name\n"
-#if defined(TCC_TARGET_I386) || defined(TCC_TARGET_X86_64)
-    "  -m32/64      defer to i386/x86_64 cross compiler\n"
+#if defined(TCC_TARGET_I386) || defined(TCC_TARGET_X86_64) || defined(TCC_TARGET_ARM64)
+    "  -m32/64/arm64      defer to i386/x86_64/arm64 cross compiler\n"
 #endif
     "Tools:\n"
     "  create library  : tcc -ar [rcsv] lib.a [files]\n"
@@ -294,7 +294,7 @@ redo:
             fputs(help2, stdout);
             return 0;
         }
-        if (opt == OPT_M32 || opt == OPT_M64)
+        if (opt == OPT_M32 || opt == OPT_M64 || opt == OPT_MARM64)
             tcc_tool_cross(s, argv, opt); /* never returns */
         if (s->verbose)
             printf(version);

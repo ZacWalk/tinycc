@@ -428,7 +428,7 @@ the_end:
 
 /* re-execute the i386/x86_64 cross-compilers with tcc -m32/-m64: */
 
-#if !defined TCC_TARGET_I386 && !defined TCC_TARGET_X86_64
+#if !defined TCC_TARGET_I386 && !defined TCC_TARGET_X86_64 && !defined TCC_TARGET_ARM64
 
 ST_FUNC void tcc_tool_cross(TCCState *s1, char **argv, int option)
 {
@@ -484,6 +484,7 @@ ST_FUNC void tcc_tool_cross(TCCState *s1, char **argv, int target)
     char program[4096];
     char *a0 = argv[0];
     int prefix = tcc_basename(a0) - a0;
+    char *prefix_name = target == OPT_M64 ? "x86_64" : (target == OPT_MARM64 ? "arm64" : "i386");
 
     snprintf(program, sizeof program,
         "%.*s%s"
@@ -494,7 +495,7 @@ ST_FUNC void tcc_tool_cross(TCCState *s1, char **argv, int target)
 #ifdef _WIN32
         ".exe"
 #endif
-        , prefix, a0, target == 64 ? "x86_64" : "i386");
+        , prefix, a0, prefix_name);
 
     if (strcmp(a0, program))
         execvp(argv[0] = program, argv);
