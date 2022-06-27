@@ -107,7 +107,7 @@ union float_long {
 };
 
 /* XXX: we don't support several builtin supports for now */
-#if !defined __x86_64__ && !defined __arm__
+#if !defined __x86_64__ && !defined __arm__ && !defined __arm64__
 
 /* XXX: use gcc/tcc intrinsic ? */
 #if defined __i386__
@@ -632,7 +632,7 @@ const float __mzerosf = -0.0;
 const double __mzerodf = -0.0;
 #endif
 
-#if defined _WIN64
+#if defined _WIN64 && !defined __arm64__
 /* MSVC x64 intrinsic */
 void __faststorefence(void)
 {

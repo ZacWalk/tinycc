@@ -29,29 +29,36 @@
 #include "i386-gen.c"
 #include "i386-link.c"
 #include "i386-asm.c"
+#define TARGET_ARCH OPT_M32
 #elif defined(TCC_TARGET_ARM)
 #include "arm-gen.c"
 #include "arm-link.c"
 #include "arm-asm.c"
+#define TARGET_ARCH 0
 #elif defined(TCC_TARGET_ARM64)
 #include "arm64-gen.c"
 #include "arm64-link.c"
 #include "arm-asm.c"
+#define TARGET_ARCH OPT_MARM64
 #elif defined(TCC_TARGET_C67)
 #include "c67-gen.c"
 #include "c67-link.c"
 #include "tcccoff.c"
+#define TARGET_ARCH 0
 #elif defined(TCC_TARGET_X86_64)
 #include "x86_64-gen.c"
 #include "x86_64-link.c"
 #include "i386-asm.c"
+#define TARGET_ARCH OPT_M64
 #elif defined(TCC_TARGET_RISCV64)
 #include "riscv64-gen.c"
 #include "riscv64-link.c"
 #include "riscv64-asm.c"
+#define TARGET_ARCH 0
 #else
 #error unknown target
 #endif
+
 #ifdef TCC_TARGET_PE
 #include "tccpe.c"
 #endif
@@ -1914,7 +1921,7 @@ reparse:
                 tcc_error("unsupported target '%s'", optarg);
                  goto unsupported_option;                
             }
-            if ((PTR_SIZE*8) != x)
+            if (TARGET_ARCH != x)
                     return x;
                 ++noaction;
             break;

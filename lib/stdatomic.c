@@ -13,6 +13,9 @@
 #define __ATOMIC_ACQ_REL 4
 #define __ATOMIC_SEQ_CST 5
 
+#ifndef __arm64__
+// hackaton
+
 #define ATOMIC_X86_COMPARE_EXCHANGE(TYPE, MODE, SUFFIX) \
     bool __atomic_compare_exchange_##MODE \
         (volatile void *atom, void *ref, TYPE xchg, \
@@ -121,4 +124,6 @@ ATOMIC_FETCH_SUB(uint64_t, 8)
 ATOMIC_FETCH_AND(uint64_t, 8)
 ATOMIC_FETCH_OR(uint64_t, 8)
 ATOMIC_FETCH_XOR(uint64_t, 8)
+#endif
+
 #endif

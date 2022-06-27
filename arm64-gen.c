@@ -54,6 +54,9 @@ ST_DATA const char * const target_machine_defs =
 #if defined(__APPLE__)
     "__aarch64__\0"
     "__arm64__\0"
+#elif defined(TCC_TARGET_ARM64) && defined(TCC_TARGET_PE)
+    "__aarch64__\0"
+    "__arm64__\0"
 #else
     "__aarch64__\0"
 #endif
